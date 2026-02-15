@@ -200,9 +200,7 @@ export default function Page() {
     } catch {}
     controlsRef.current = null;
 
-    try {
-      readerRef.current?.reset();
-    } catch {}
+   
     readerRef.current = null;
 
     if (videoRef.current) {
