@@ -79,3 +79,123 @@ export async function GET(req: Request) {
     price,
   });
 }
+
+import { NextResponse } from "next/server";
+
+const BASE = "https://www.xn--kremarket-22b.com";
+
+function stripTags(s: string) {
+  return s.replace(/<[^>]*>/g, " ");
+}
+function decodeBasicEntities(s: string) {
+  return s
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+function cleanText(s: string) {
+  return decodeBasicEntities(stripTags(s)).replace(/\s+/g, " ").trim();
+}
+
+function pickFirst(html: string, patterns: RegExp[]) {
+  for (const re of patterns) {
+    const m = html.match(re);
+    if (m?.[1]) return cleanText(m[1]);
+  }
+  return "";
+}
+
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const q = (searchParams.get("q") || "").trim();
+  const debug = searchParams.get("debug") === "1";
+
+  if (!q) return NextResponse.json({ ok: false, found: false, error: "missing_q" });
+
+  const url = `${BASE}/Arama?1&kelime=${encodeURIComponent(q)}`;
+
+  // Prod'da bot/koruma yüzünden HTML farklı gelebiliyor: header şart
+  const res = await fetch(url, {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      "user-agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+      referer: BASE + "/",
+    },
+  });
+
+  const html = await res.text();
+
+  // Upstream sorun varsa "found:false" diye saklamayalım
+  if (!res.ok || html.length < 200) {
+    return NextResponse.json({
+      ok: false,
+      found: false,
+      upstream_status: res.status,
+      upstream_len: html.length,
+    });
+  }
+
+  // TITLE için birden fazla olası yer:
+  const title = pickFirst(html, [
+    // ürün sayfası H1
+    /<h1[^>]*class="[^"]*product_title[^"]*"[^>]*>([\s\S]*?)<\/h1>/i,
+    // search/list kart başlığı
+    /<h2[^>]*class="[^"]*woocommerce-loop-product__title[^"]*"[^>]*>([\s\S]*?)<\/h2>/i,
+    /<h3[^>]*class="[^"]*product-title[^"]*"[^>]*>([\s\S]*?)<\/h3>/i,
+    // title tag fallback
+    /<title[^>]*>([\s\S]*?)<\/title>/i,
+  ]);
+
+  // PRICE için:
+  // WooCommerce genelde: <span class="woocommerce-Price-amount amount">₺399,00</span>
+  let priceRaw = pickFirst(html, [
+    /<span[^>]*class="[^"]*woocommerce-Price-amount[^"]*"[^>]*>([\s\S]*?)<\/span>/i,
+    /<bdi[^>]*>([\s\S]*?)<\/bdi>/i,
+    // meta price fallback (bazı temalarda olur)
+    /property="product:price:amount"\s+content="([^"]+)"/i,
+  ]);
+
+  // fiyat temizle: "KDV Dahil" vb kırp
+  let price = priceRaw
+    .replace(/KDV\s*Dahil/gi, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // İlk fiyat içinde iki fiyat gelirse ilkini al (399,00 599,00 gibi)
+  // "₺" geçen ilk parçayı çekmeye çalış
+  const mTry = price.match(/(₺\s*[\d\.\,]+)/);
+  if (mTry?.[1]) price = mTry[1].replace(/\s+/g, "");
+
+  const found = Boolean(title && price);
+
+  if (!found && debug) {
+    // Debug modunda küçük ipucu (HTML’i dökmüyoruz)
+    return NextResponse.json({
+      ok: true,
+      found: false,
+      debug: {
+        upstream_status: res.status,
+        upstream_len: html.length,
+        title_guess: title,
+        price_guess: priceRaw?.slice(0, 80) || "",
+        html_title_snip: (html.match(/<title[^>]*>[\s\S]{0,120}<\/title>/i)?.[0] || "").slice(0, 140),
+      },
+    });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    found,
+    title: found ? title : "",
+    price: found ? price : "",
+  });
+}
