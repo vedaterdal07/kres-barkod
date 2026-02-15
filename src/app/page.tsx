@@ -176,7 +176,9 @@ export default function Page() {
     setNotFound(false);
 
     try {
-      const r = await fetch(`/api/lookup?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`/api/lookup?q=${encodeURIComponent(code)}`, {
+  cache: "no-store",
+});
       const j = (await r.json()) as LookupResp;
 
       if (j.ok && "found" in j && j.found) {
