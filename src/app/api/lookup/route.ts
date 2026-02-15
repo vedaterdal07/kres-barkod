@@ -191,6 +191,22 @@ export async function GET(req: Request) {
       },
     });
   }
+if (!found && debug) {
+  const titleTag = html.match(/<title[^>]*>([\s\S]{0,160})<\/title>/i)?.[1] || "";
+  const hasCaptcha = /captcha|cloudflare|just a moment|verify you are/i.test(html);
+
+  return NextResponse.json({
+    ok: true,
+    found: false,
+    debug: {
+      upstream_status: res.status,
+      upstream_len: html.length,
+      title_tag: cleanText(titleTag),
+      hasCaptcha,
+      sample: cleanText(html.slice(0, 400)), // ilk 400 karakter ipucu
+    },
+  });
+}
 
   return NextResponse.json({
     ok: true,
@@ -199,3 +215,4 @@ export async function GET(req: Request) {
     price: found ? price : "",
   });
 }
+
