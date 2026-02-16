@@ -28,6 +28,22 @@ function pickFirstPrice(text: string) {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const barcode = (searchParams.get("q") || "").trim();
+  const { searchParams } = new URL(req.url);
+const barcode = (searchParams.get("q") || "").trim();
+const debug = searchParams.get("debug") === "1";
+
+if (debug) {
+  return Response.json({
+    ok: true,
+    found: false,
+    debug: {
+      note: "DEBUG_MODE_ON",
+      barcode,
+      build: "2026-02-16-1",
+    },
+  });
+}
+
 
   if (!barcode) {
     return NextResponse.json({ ok: false }, { status: 400 });
@@ -241,5 +257,6 @@ if (!found && debug) {
     price: found ? price : "",
   });
 }
+
 
 
