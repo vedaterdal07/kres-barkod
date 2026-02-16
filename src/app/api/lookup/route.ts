@@ -33,18 +33,42 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
 
-  const url = `https://www.xn--kremarket-22b.com/Arama?1&kelime=${encodeURIComponent(barcode)}`;
+  const urls = [
+  `${BASE}/Arama?1&kelime=${encodeURIComponent(q)}`,
+  `${BASE}/?s=${encodeURIComponent(q)}&post_type=product`,
+];
 
+  let html = "";
+let status = 0;
+
+for (const url of urls) {
   const res = await fetch(url, {
-    headers: {
-      "user-agent": "Mozilla/5.0",
-      accept: "text/html",
-    },
+    method: "GET",
     cache: "no-store",
+    headers: {
+      "user-agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+      referer: BASE + "/",
+    },
   });
 
-  const html = await res.text();
-  const $ = cheerio.load(html);
+  status = res.status;
+  const t = await res.text();
+
+  // iyi bir HTML geldiyse bunu kullan
+  if (res.ok && t.length > 500) {
+    html = t;
+    break;
+  }
+}
+
+if (!html) {
+  return NextResponse.json({ ok: false, found: false, upstream_status: status });
+}
+
 
   const product = $(".productItem, .ProductItem, .urunItem, .product-item").first();
   if (!product.length) {
@@ -115,8 +139,10 @@ export async function GET(req: Request) {
 
   if (!q) return NextResponse.json({ ok: false, found: false, error: "missing_q" });
 
-  const url = `${BASE}/Arama?1&kelime=${encodeURIComponent(q)}`;
-
+ const urls = [
+  `${BASE}/Arama?1&kelime=${encodeURIComponent(q)}`,
+  `${BASE}/?s=${encodeURIComponent(q)}&post_type=product`,
+];
   // Prod'da bot/koruma yüzünden HTML farklı gelebiliyor: header şart
   const res = await fetch(url, {
     method: "GET",
@@ -215,4 +241,5 @@ if (!found && debug) {
     price: found ? price : "",
   });
 }
+
 
